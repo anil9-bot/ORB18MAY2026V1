@@ -23,8 +23,8 @@ from backtest  import BacktestEngine
 # ─────────────────────────────────────────────
 #  CONFIGURATION  ← Edit these two lines
 # ─────────────────────────────────────────────
-CLIENT_ID     = os.getenv('UPSTOX_CLIENT_ID',     'f98dc62e-dddf-4278-8c77-171ab144d74f')
-CLIENT_SECRET = os.getenv('UPSTOX_CLIENT_SECRET', 'kx9317xvn3')
+CLIENT_ID     = os.getenv('UPSTOX_CLIENT_ID',     '')
+CLIENT_SECRET = os.getenv('UPSTOX_CLIENT_SECRET', '')
 REDIRECT_URI  = 'http://localhost:8080/callback'
 PORT          = 8080
 # ─────────────────────────────────────────────
