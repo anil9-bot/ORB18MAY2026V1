@@ -1,0 +1,1525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ORB + VWAP Auto-Trader — Upstox</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0d0f14; --bg2: #13161e; --bg3: #1a1e2a; --bg4: #222638;
+    --border: #2a2f42; --border2: #353b55;
+    --text: #e2e8f0; --muted: #8892a4; --dim: #555e75;
+    --green: #22c55e; --red: #ef4444; --amber: #f59e0b;
+    --blue: #3b82f6; --purple: #a78bfa; --teal: #14b8a6;
+    --green-bg: rgba(34,197,94,0.12); --red-bg: rgba(239,68,68,0.12);
+    --blue-bg: rgba(59,130,246,0.12); --amber-bg: rgba(245,158,11,0.12);
+    --radius: 8px; --radius-lg: 12px;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font);
+         font-size: 14px; line-height: 1.6; }
+  a { color: var(--blue); text-decoration: none; }
+
+  /* ── Header ── */
+  header {
+    background: var(--bg2); border-bottom: 1px solid var(--border);
+    padding: 0 24px; height: 58px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .logo { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+  .logo-icon { width: 32px; height: 32px; background: linear-gradient(135deg,#3b82f6,#a78bfa);
+               border-radius: 8px; display: flex; align-items: center; justify-content: center;
+               font-size: 16px; }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .status-pill { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+  .pill-live  { background: var(--green-bg); color: var(--green); border: 1px solid var(--green); }
+  .pill-idle  { background: var(--bg3); color: var(--muted); border: 1px solid var(--border); }
+  .btn { padding: 7px 16px; border-radius: var(--radius); border: 1px solid var(--border);
+         background: var(--bg3); color: var(--text); cursor: pointer; font-size: 13px;
+         transition: all 0.15s; white-space: nowrap; }
+  .btn:hover { background: var(--bg4); border-color: var(--border2); }
+  .btn-primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .btn-primary:hover { background: #2563eb; }
+  .btn-danger { background: var(--red-bg); border-color: var(--red); color: var(--red); }
+  .btn-danger:hover { background: rgba(239,68,68,0.2); }
+  .btn-green { background: var(--green-bg); border-color: var(--green); color: var(--green); }
+  .btn-green:hover { background: rgba(34,197,94,0.2); }
+
+  /* ── Layout ── */
+  .tabs-nav { background: var(--bg2); border-bottom: 1px solid var(--border);
+              display: flex; gap: 0; padding: 0 24px; }
+  .tab-btn { padding: 14px 20px; border: none; background: none; color: var(--muted);
+             cursor: pointer; font-size: 13px; font-weight: 500;
+             border-bottom: 2px solid transparent; transition: all 0.15s; }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); }
+  .tab-pane { display: none; padding: 24px; max-width: 1200px; margin: 0 auto; }
+  .tab-pane.active { display: block; }
+
+  /* ── Cards ── */
+  .card { background: var(--bg2); border: 1px solid var(--border);
+          border-radius: var(--radius-lg); padding: 20px; margin-bottom: 16px; }
+  .card-title { font-size: 13px; font-weight: 600; color: var(--muted);
+                text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 16px; }
+  .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+  .metric { background: var(--bg3); border-radius: var(--radius); padding: 14px; }
+  .metric-label { font-size: 11px; color: var(--dim); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .metric-value { font-size: 22px; font-weight: 600; }
+  .metric-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .green { color: var(--green); } .red { color: var(--red); }
+  .amber { color: var(--amber); } .blue { color: var(--blue); }
+  .purple { color: var(--purple); } .teal { color: var(--teal); }
+
+  /* ── Form controls ── */
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group label { font-size: 12px; color: var(--muted); font-weight: 500; }
+  .form-control { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius);
+                  padding: 8px 12px; color: var(--text); font-size: 13px; width: 100%; }
+  .form-control:focus { outline: none; border-color: var(--blue); }
+  select.form-control option { background: var(--bg3); }
+
+  /* ── Instrument selection ── */
+  .instr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+  .instr-check { display: none; }
+  .instr-label { display: block; background: var(--bg3); border: 1px solid var(--border);
+                 border-radius: var(--radius); padding: 12px 14px; cursor: pointer;
+                 transition: all 0.15s; }
+  .instr-label:hover { border-color: var(--border2); }
+  .instr-check:checked + .instr-label { border-color: var(--blue); background: var(--blue-bg); }
+  .instr-name { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+  .instr-meta { font-size: 11px; color: var(--muted); }
+  .instr-stars { color: var(--amber); font-size: 11px; margin-top: 4px; }
+
+  /* ── Tables ── */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th { font-size: 11px; font-weight: 600; color: var(--dim); text-transform: uppercase;
+       letter-spacing: 0.04em; padding: 10px 12px; text-align: left;
+       border-bottom: 1px solid var(--border); background: var(--bg3); }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  .badge { padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .badge-buy { background: var(--green-bg); color: var(--green); }
+  .badge-sell { background: var(--red-bg); color: var(--red); }
+  .badge-hold { background: var(--amber-bg); color: var(--amber); }
+  .badge-win { background: var(--green-bg); color: var(--green); }
+  .badge-loss { background: var(--red-bg); color: var(--red); }
+  .badge-wait { background: var(--bg4); color: var(--muted); }
+
+  /* ── Signals feed ── */
+  .signal-feed { max-height: 320px; overflow-y: auto; }
+  .signal-item { padding: 10px 14px; border-bottom: 1px solid var(--border);
+                 display: flex; gap: 12px; align-items: flex-start; }
+  .signal-item:last-child { border-bottom: none; }
+  .signal-time { font-size: 11px; color: var(--dim); white-space: nowrap; margin-top: 1px; }
+  .signal-body { flex: 1; }
+  .signal-action { font-size: 12px; font-weight: 600; }
+  .signal-detail { font-size: 12px; color: var(--muted); }
+
+  /* ── Chart ── */
+  .chart-wrap { position: relative; height: 280px; }
+
+  /* ── Summary stats (backtest results) ── */
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 20px; }
+  .stat-card { background: var(--bg3); border: 1px solid var(--border);
+               border-radius: var(--radius); padding: 14px; }
+  .stat-label { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+  .stat-val { font-size: 18px; font-weight: 600; }
+
+  /* ── Instruments page ── */
+  .stocks-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+  .stock-card { background: var(--bg2); border: 1px solid var(--border);
+                border-radius: var(--radius-lg); padding: 16px; }
+  .stock-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+  .stock-name { font-size: 14px; font-weight: 600; }
+  .stock-key { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .suitability { display: flex; gap: 3px; }
+  .suit-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border2); }
+  .suit-dot.on { background: var(--green); }
+  .stock-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .stock-meta { display: flex; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+  .stock-tag { font-size: 11px; color: var(--dim); background: var(--bg3);
+               padding: 2px 8px; border-radius: 10px; border: 1px solid var(--border); }
+
+  /* ── Loading / empty states ── */
+  .empty { padding: 40px; text-align: center; color: var(--dim); }
+  .loading { color: var(--muted); font-size: 13px; padding: 20px; text-align: center; }
+  .error-box { background: var(--red-bg); border: 1px solid var(--red); border-radius: var(--radius);
+               padding: 12px 16px; color: var(--red); font-size: 13px; margin-bottom: 16px; }
+  .info-box { background: var(--blue-bg); border: 1px solid var(--blue); border-radius: var(--radius);
+              padding: 12px 16px; color: var(--blue); font-size: 13px; margin-bottom: 16px; }
+  .success-box { background: var(--green-bg); border: 1px solid var(--green); border-radius: var(--radius);
+                 padding: 12px 16px; color: var(--green); font-size: 13px; margin-bottom: 16px; }
+
+  /* ── Misc ── */
+  .row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .row > * { flex: 1; min-width: 240px; }
+  .sep { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+  .flex { display: flex; align-items: center; gap: 10px; }
+  .flex-between { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+  .mt8 { margin-top: 8px; } .mt16 { margin-top: 16px; }
+  .text-muted { color: var(--muted); } .text-sm { font-size: 12px; }
+  .spin { animation: spin 1s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">⚡</div>
+    ORB + VWAP Auto-Trader
+  </div>
+  <div class="header-right">
+    <span id="strategy-pill" class="status-pill pill-idle">● Idle</span>
+    <span id="pnl-header" class="text-muted" style="font-size:13px;font-weight:600;"></span>
+    <span id="user-badge" class="text-muted text-sm"></span>
+    {% if logged_in %}
+      <a href="/logout" class="btn">Logout</a>
+    {% else %}
+      <a href="/login" class="btn btn-primary">Login with Upstox</a>
+    {% endif %}
+  </div>
+</header>
+
+<!-- Tabs -->
+<div class="tabs-nav">
+  <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Dashboard</button>
+  <button class="tab-btn" onclick="switchTab('backtest')">🔬 Backtest</button>
+  <button class="tab-btn" onclick="switchTab('monthly')">📅 Monthly</button>
+  <button class="tab-btn" onclick="switchTab('instruments')">📈 Instruments</button>
+  <button class="tab-btn" onclick="switchTab('settings')">⚙️ Settings</button>
+</div>
+
+<!-- ══════════════════ DASHBOARD ══════════════════ -->
+<div class="tab-pane active" id="tab-dashboard">
+
+  {% if not logged_in %}
+  <div class="info-box" style="margin-top:24px;">
+    🔐 Please <a href="/login">login with Upstox</a> to use live trading and backtesting.
+    Both require your Upstox access token for real market data.
+  </div>
+  {% endif %}
+
+  <!-- Metrics row -->
+  <div class="metric-grid" style="margin-bottom:16px;">
+    <div class="metric">
+      <div class="metric-label">Today's P&L</div>
+      <div class="metric-value green" id="m-pnl">₹0</div>
+      <div class="metric-sub" id="m-pnl-sub">0 trades completed</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Open Positions</div>
+      <div class="metric-value blue" id="m-positions">0</div>
+      <div class="metric-sub">active right now</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Strategy Status</div>
+      <div class="metric-value amber" id="m-status">Idle</div>
+      <div class="metric-sub" id="m-instruments">no instruments active</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Available Funds</div>
+      <div class="metric-value purple" id="m-funds">—</div>
+      <div class="metric-sub" id="m-funds-sub">Upstox margin</div>
+      <a href="/api/debug/funds-raw" target="_blank"
+         style="font-size:10px;color:var(--dim);margin-top:4px;display:block;">debug ↗</a>
+    </div>
+  </div>
+
+  <div class="row">
+    <!-- Strategy Control -->
+    <div class="card" style="flex:1.2;min-width:320px;">
+      <div class="card-title">Strategy Control</div>
+
+      <div class="form-group" style="margin-bottom:12px;">
+        <label>Select Instruments to Trade</label>
+        <div class="instr-grid" id="instr-selector" style="margin-top:6px;">
+          <input type="checkbox" class="instr-check" id="ck-NIFTY" value="NIFTY" checked>
+          <label class="instr-label" for="ck-NIFTY">
+            <div class="instr-name blue">NIFTY 50</div>
+            <div class="instr-meta">Lot: 75 | Weekly Tue</div>
+            <div class="instr-stars">★★★★★</div>
+          </label>
+          <input type="checkbox" class="instr-check" id="ck-BANKNIFTY" value="BANKNIFTY">
+          <label class="instr-label" for="ck-BANKNIFTY">
+            <div class="instr-name purple">BANKNIFTY</div>
+            <div class="instr-meta">Lot: 30 | Monthly Tue</div>
+            <div class="instr-stars">★★★★★</div>
+          </label>
+          <input type="checkbox" class="instr-check" id="ck-HDFCBANK" value="HDFCBANK">
+          <label class="instr-label" for="ck-HDFCBANK">
+            <div class="instr-name">HDFC Bank</div>
+            <div class="instr-meta">Lot: 550 | Equity</div>
+            <div class="instr-stars">★★★★★</div>
+          </label>
+          <input type="checkbox" class="instr-check" id="ck-ICICIBANK" value="ICICIBANK">
+          <label class="instr-label" for="ck-ICICIBANK">
+            <div class="instr-name">ICICI Bank</div>
+            <div class="instr-meta">Lot: 700 | Equity</div>
+            <div class="instr-stars">★★★★★</div>
+          </label>
+          <input type="checkbox" class="instr-check" id="ck-RELIANCE" value="RELIANCE">
+          <label class="instr-label" for="ck-RELIANCE">
+            <div class="instr-name">Reliance</div>
+            <div class="instr-meta">Lot: 250 | Equity</div>
+            <div class="instr-stars">★★★★</div>
+          </label>
+          <input type="checkbox" class="instr-check" id="ck-AXISBANK" value="AXISBANK">
+          <label class="instr-label" for="ck-AXISBANK">
+            <div class="instr-name">Axis Bank</div>
+            <div class="instr-meta">Lot: 1200 | Equity</div>
+            <div class="instr-stars">★★★★</div>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-grid" style="margin-bottom:14px;">
+        <div class="form-group">
+          <label>Lots per trade</label>
+          <input type="number" class="form-control" id="cfg-lots" value="1" min="1" max="20">
+        </div>
+        <div class="form-group">
+          <label>Capital (₹)</label>
+          <input type="number" class="form-control" id="cfg-capital" value="400000" step="50000">
+        </div>
+        <div class="form-group">
+          <label>Risk per trade (%)</label>
+          <input type="number" class="form-control" id="cfg-risk" value="1.0" step="0.1" min="0.1" max="5">
+        </div>
+        <div class="form-group">
+          <label>Opening Range (min)</label>
+          <select class="form-control" id="cfg-or">
+            <option value="15" selected>15 min (recommended)</option>
+            <option value="30">30 min</option>
+            <option value="5">5 min</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="strategy-msg" style="margin-bottom:10px;display:none;"></div>
+      <div class="flex" style="gap:10px;">
+        <button class="btn btn-green" id="btn-start" onclick="startStrategy()" style="flex:1;">
+          ▶ Start Strategy
+        </button>
+        <button class="btn btn-danger" id="btn-stop" onclick="stopStrategy('ALL')" style="flex:1;">
+          ■ Stop All
+        </button>
+      </div>
+      <p class="text-sm text-muted" style="margin-top:8px;">
+        One trade per session per instrument. Orders placed at market price via Upstox API.
+      </p>
+    </div>
+
+    <!-- Live Signals -->
+    <div class="card" style="flex:1;min-width:280px;">
+      <div class="flex-between" style="margin-bottom:12px;">
+        <div class="card-title" style="margin:0;">Live Signals</div>
+        <span class="text-sm text-muted" id="signal-count">—</span>
+      </div>
+      <div class="signal-feed" id="signal-feed">
+        <div class="empty">Signals will appear here once strategy is running.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Open Positions -->
+  <div class="card">
+    <div class="flex-between" style="margin-bottom:12px;">
+      <div class="card-title" style="margin:0;">Open Positions (Upstox)</div>
+      <button class="btn" style="font-size:12px;padding:4px 10px;" onclick="loadPositions()">↻ Refresh</button>
+    </div>
+    <div class="table-wrap" id="positions-table">
+      <div class="empty">No open positions. Log in and start strategy to see live positions.</div>
+    </div>
+  </div>
+
+  <!-- Today's Trades -->
+  <div class="card">
+    <div class="card-title">Today's Completed Trades (Strategy)</div>
+    <div class="table-wrap" id="trades-table">
+      <div class="empty">No trades completed today yet.</div>
+    </div>
+  </div>
+
+</div><!-- /dashboard -->
+
+<!-- ══════════════════ BACKTEST ══════════════════ -->
+<div class="tab-pane" id="tab-backtest">
+
+  <div class="info-box">
+    📡 <strong>Options-Based Backtest</strong> — uses real Upstox historical data throughout:<br>
+    &nbsp;&nbsp;① Signals generated on <strong>underlying index</strong> via ORB + VWAP (5-min candles)<br>
+    &nbsp;&nbsp;② On each signal, buys <strong>ATM CE</strong> (LONG) or <strong>ATM PE</strong> (SHORT) at actual historical premium<br>
+    &nbsp;&nbsp;③ P&amp;L = (option exit premium − entry premium) × lot size × lots — <strong>real option data, no formulas</strong><br>
+    &nbsp;&nbsp;④ If Upstox has no data for a specific contract, trade falls back to index-point P&amp;L and is flagged ⚠
+  </div>
+
+  <div class="card">
+    <div class="card-title">Backtest Configuration</div>
+    <div class="form-grid" style="margin-bottom:16px;">
+      <div class="form-group">
+        <label>Instrument</label>
+        <select class="form-control" id="bt-instrument">
+          <optgroup label="── Indices ──">
+            <option value="NIFTY">Nifty 50 (Index)</option>
+            <option value="BANKNIFTY">Bank Nifty (Index)</option>
+          </optgroup>
+          <optgroup label="── Top Stocks ──">
+            <option value="HDFCBANK">HDFC Bank</option>
+            <option value="ICICIBANK">ICICI Bank</option>
+            <option value="RELIANCE">Reliance Industries</option>
+            <option value="AXISBANK">Axis Bank</option>
+            <option value="SBIN">SBI</option>
+            <option value="KOTAKBANK">Kotak Mahindra Bank</option>
+            <option value="BAJFINANCE">Bajaj Finance</option>
+            <option value="LT">Larsen &amp; Toubro</option>
+            <option value="TCS">TCS</option>
+            <option value="INFY">Infosys</option>
+          </optgroup>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>From Date</label>
+        <input type="date" class="form-control" id="bt-from" value="">
+      </div>
+      <div class="form-group">
+        <label>To Date</label>
+        <input type="date" class="form-control" id="bt-to" value="">
+      </div>
+      <div class="form-group">
+        <label>Lots per trade</label>
+        <input type="number" class="form-control" id="bt-lots" value="1" min="1" max="20">
+      </div>
+      <div class="form-group">
+        <label>Capital (₹)</label>
+        <input type="number" class="form-control" id="bt-capital" value="400000" step="50000">
+      </div>
+      <div class="form-group">
+        <label>Opening Range</label>
+        <select class="form-control" id="bt-or">
+          <option value="15" selected>15 min</option>
+          <option value="30">30 min</option>
+          <option value="5">5 min</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>T1 ratio (×risk)</label>
+        <input type="number" class="form-control" id="bt-t1" value="1.5" step="0.1" min="0.5">
+      </div>
+      <div class="form-group">
+        <label>T2 ratio (×risk)</label>
+        <input type="number" class="form-control" id="bt-t2" value="2.5" step="0.1" min="1">
+      </div>
+    </div>
+    <div id="bt-msg" style="display:none;margin-bottom:12px;"></div>
+    <button class="btn btn-primary" id="btn-bt" onclick="runBacktest()" style="min-width:160px;">
+      ▶ Run Backtest
+    </button>
+  </div>
+
+  <!-- Results -->
+  <div id="bt-results" style="display:none;">
+    <div class="summary-grid" id="bt-summary"></div>
+
+    <div class="card">
+      <div class="card-title">Equity Curve (Cumulative P&amp;L)</div>
+      <div class="chart-wrap">
+        <canvas id="bt-chart"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="flex-between" style="margin-bottom:12px;">
+        <div class="card-title" style="margin:0;">Trade Log — Options P&amp;L</div>
+        <span class="text-sm text-muted" id="bt-trade-count"></span>
+      </div>
+      <div class="table-wrap">
+        <table id="bt-trade-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Dir</th>
+              <th>Option Contract</th>
+              <th>Strike</th>
+              <th>Expiry</th>
+              <th>Entry Time</th>
+              <th>Idx Entry ₹</th>
+              <th>Opt Entry ₹</th>
+              <th>Exit Time</th>
+              <th>Idx Exit ₹</th>
+              <th>Opt Exit ₹</th>
+              <th>Exit Reason</th>
+              <th>India VIX</th>
+              <th>Option P&amp;L ₹</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody id="bt-trade-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div><!-- /backtest -->
+
+<!-- ══════════════════ MONTHLY ANALYSIS ══════════════════ -->
+<div class="tab-pane" id="tab-monthly">
+
+  <div class="info-box">
+    📅 <strong>Month-wise Backtest</strong> — runs the strategy once over your full date range,
+    then breaks down P&amp;L, win rate, and trade count <strong>per calendar month</strong>.
+    Helps you identify which months the strategy excels vs struggles.
+  </div>
+
+  <!-- Config -->
+  <div class="card">
+    <div class="card-title">Monthly Analysis Configuration</div>
+    <div class="form-grid" style="margin-bottom:16px;">
+      <div class="form-group">
+        <label>Instrument</label>
+        <select class="form-control" id="mo-instrument">
+          <optgroup label="── Indices ──">
+            <option value="BANKNIFTY" selected>Bank Nifty (Index)</option>
+            <option value="NIFTY">Nifty 50 (Index)</option>
+          </optgroup>
+          <optgroup label="── Top Stocks ──">
+            <option value="HDFCBANK">HDFC Bank</option>
+            <option value="ICICIBANK">ICICI Bank</option>
+            <option value="RELIANCE">Reliance</option>
+            <option value="AXISBANK">Axis Bank</option>
+            <option value="SBIN">SBI</option>
+            <option value="KOTAKBANK">Kotak Bank</option>
+            <option value="BAJFINANCE">Bajaj Finance</option>
+            <option value="TCS">TCS</option>
+            <option value="INFY">Infosys</option>
+          </optgroup>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>From Date</label>
+        <input type="date" class="form-control" id="mo-from">
+      </div>
+      <div class="form-group">
+        <label>To Date</label>
+        <input type="date" class="form-control" id="mo-to">
+      </div>
+      <div class="form-group">
+        <label>Lots per trade</label>
+        <input type="number" class="form-control" id="mo-lots" value="1" min="1" max="20">
+      </div>
+      <div class="form-group">
+        <label>Capital (₹)</label>
+        <input type="number" class="form-control" id="mo-capital" value="400000" step="50000">
+      </div>
+      <div class="form-group">
+        <label>Opening Range</label>
+        <select class="form-control" id="mo-or">
+          <option value="15" selected>15 min</option>
+          <option value="30">30 min</option>
+          <option value="5">5 min</option>
+        </select>
+      </div>
+    </div>
+    <div id="mo-msg" style="display:none;margin-bottom:12px;"></div>
+    <button class="btn btn-primary" id="btn-mo" onclick="runMonthly()" style="min-width:200px;">
+      📅 Run Monthly Analysis
+    </button>
+  </div>
+
+  <!-- Results (hidden until run) -->
+  <div id="mo-results" style="display:none;">
+
+    <!-- Overall summary strip -->
+    <div class="card" style="background:var(--bg3);">
+      <div class="card-title">Overall Summary</div>
+      <div class="summary-grid" id="mo-overall"></div>
+    </div>
+
+    <!-- Monthly P&L bar chart -->
+    <div class="card">
+      <div class="card-title">Monthly P&amp;L — Option Premiums (₹)</div>
+      <div class="chart-wrap" style="height:260px;">
+        <canvas id="mo-chart"></canvas>
+      </div>
+    </div>
+
+    <!-- Month-by-month table -->
+    <div class="card">
+      <div class="flex-between" style="margin-bottom:12px;">
+        <div class="card-title" style="margin:0;">Month-by-Month Breakdown</div>
+        <span class="text-sm text-muted" id="mo-month-count"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Month</th>
+              <th>Trades</th>
+              <th>▲ Long</th>
+              <th>▼ Short</th>
+              <th>Win Rate</th>
+              <th>Best Trade</th>
+              <th>Worst Trade</th>
+              <th>Option P&amp;L ₹</th>
+              <th>Return %</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody id="mo-table-body"></tbody>
+          <tfoot id="mo-table-foot"></tfoot>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /mo-results -->
+</div><!-- /monthly tab -->
+
+<!-- ══════════════════ INSTRUMENTS ══════════════════ -->
+<div class="tab-pane" id="tab-instruments">
+  <div class="info-box" style="margin-bottom:20px;">
+    Instruments ranked by ORB+VWAP suitability (★★★★★ = best fit based on ADR, volume, trend quality).
+  </div>
+
+  <div style="font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;
+              letter-spacing:0.05em;margin-bottom:12px;">Indices (Options Trading)</div>
+  <div class="stocks-grid" style="margin-bottom:24px;" id="indices-grid"></div>
+
+  <div style="font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;
+              letter-spacing:0.05em;margin-bottom:12px;">Top NSE Stocks (F&amp;O Eligible)</div>
+  <div class="stocks-grid" id="stocks-grid"></div>
+
+  <div class="card" style="margin-top:20px;">
+    <div class="card-title">Strategy Selection Guide</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--green);margin-bottom:8px;">Best for ORB Breakouts</div>
+        <ul style="color:var(--muted);font-size:13px;line-height:1.8;padding-left:16px;">
+          <li>High Average Daily Range (ADR &gt; 0.8%)</li>
+          <li>Minimum 20L+ shares traded per day</li>
+          <li>Strong trending behavior (not range-bound)</li>
+          <li>Tight bid-ask spreads in options chain</li>
+        </ul>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--blue);margin-bottom:8px;">Best for VWAP Pullbacks</div>
+        <ul style="color:var(--muted);font-size:13px;line-height:1.8;padding-left:16px;">
+          <li>Institutional participation (FII/DII flows)</li>
+          <li>Respects technical levels consistently</li>
+          <li>Banking &amp; financial stocks work best</li>
+          <li>Avoid low-float or news-driven tickers</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ SETTINGS ══════════════════ -->
+<div class="tab-pane" id="tab-settings">
+  <div class="card">
+    <div class="card-title">API Configuration</div>
+    <div class="info-box">
+      Set your Upstox API credentials in <code style="background:var(--bg3);padding:2px 6px;border-radius:4px;">app.py</code>
+      at the top of the file, or use environment variables:
+    </div>
+    <pre style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);
+                padding:16px;font-size:12px;color:var(--muted);overflow-x:auto;margin-top:12px;">
+# Option 1: Edit app.py directly
+CLIENT_ID     = 'your_client_id_from_upstox_console'
+CLIENT_SECRET = 'your_client_secret'
+
+# Option 2: Environment variables (recommended for security)
+export UPSTOX_CLIENT_ID=your_client_id
+export UPSTOX_CLIENT_SECRET=your_client_secret
+
+# Then run:
+python app.py
+    </pre>
+    <div class="text-sm text-muted" style="margin-top:12px;">
+      Get your credentials at <a href="https://developer.upstox.com" target="_blank">developer.upstox.com</a>
+      → Create App → Redirect URI must be <code style="background:var(--bg3);padding:1px 5px;border-radius:3px;">http://localhost:8080/callback</code>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Strategy Logic Reference</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;font-size:13px;">
+      <div>
+        <div style="color:var(--green);font-weight:600;margin-bottom:8px;">LONG Entry</div>
+        <div style="color:var(--muted);line-height:1.8;">
+          ✓ 5-min candle closes ABOVE OR High<br>
+          ✓ Close price is ABOVE VWAP<br>
+          ✓ Volume ≥ 75% of session average<br>
+          ✓ Entry after 9:30 AM (OR complete)<br>
+          ✓ No trades after 2:00 PM
+        </div>
+      </div>
+      <div>
+        <div style="color:var(--red);font-weight:600;margin-bottom:8px;">SHORT Entry</div>
+        <div style="color:var(--muted);line-height:1.8;">
+          ✓ 5-min candle closes BELOW OR Low<br>
+          ✓ Close price is BELOW VWAP<br>
+          ✓ Volume ≥ 75% of session average<br>
+          ✓ Entry after 9:30 AM (OR complete)<br>
+          ✓ No trades after 2:00 PM
+        </div>
+      </div>
+      <div>
+        <div style="color:var(--amber);font-weight:600;margin-bottom:8px;">Exit Rules</div>
+        <div style="color:var(--muted);line-height:1.8;">
+          🔴 Stop Loss → OR Low (LONG) / OR High (SHORT)<br>
+          🟡 Target 1 → Entry ± 1.5× risk → exit 50%<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;SL moved to entry price (free trade)<br>
+          🟢 Target 2 → Entry ± 2.5× risk → exit 50%<br>
+          ⏰ Time Exit → Force close at 3:15 PM
+        </div>
+      </div>
+      <div>
+        <div style="color:var(--purple);font-weight:600;margin-bottom:8px;">Position Sizing</div>
+        <div style="color:var(--muted);line-height:1.8;">
+          Risk% of Capital ÷ Risk per lot<br>
+          = Number of lots (capped at 10)<br><br>
+          Example: ₹4L capital, 1% risk = ₹4,000 risk<br>
+          50pt stop on Nifty (lot 75) = ₹3,750/lot<br>
+          → 1 lot
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🔬 Test Data Connection</div>
+    <p class="text-muted text-sm" style="margin-bottom:14px;">
+      If backtest shows "No historical data returned", click below to diagnose the exact issue.
+      Tests a live 3-day 1-minute fetch from Upstox and shows raw response info.
+    </p>
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
+      <select class="form-control" id="test-instrument" style="max-width:200px;">
+        <option value="NIFTY">Nifty 50</option>
+        <option value="BANKNIFTY">Bank Nifty</option>
+        <option value="HDFCBANK">HDFC Bank</option>
+        <option value="RELIANCE">Reliance</option>
+      </select>
+      <button class="btn btn-primary" onclick="testConnection()" id="btn-test">▶ Test Connection</button>
+      <button class="btn" onclick="sampleCandles()" id="btn-sample">📊 Preview 5-min Candles</button>
+    </div>
+    <div id="test-result" style="display:none;"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Important Disclaimers</div>
+    <ul style="color:var(--muted);font-size:13px;line-height:2;padding-left:16px;">
+      <li>This is a paper/live trading tool. Always verify orders on your Upstox account.</li>
+      <li>Backtesting uses underlying price data. Options P&L differs due to premium, IV, decay.</li>
+      <li>Past backtest performance does not guarantee future results.</li>
+      <li>Access tokens expire daily. Re-login each morning before market opens.</li>
+      <li>Expiry dates are calculated programmatically; verify during holidays/special sessions.</li>
+    </ul>
+  </div>
+</div><!-- /settings -->
+
+<script>
+// ──────────────────────────────────────────────
+//  Tab switching
+// ──────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'instruments') renderInstruments();
+}
+// ──────────────────────────────────────────────
+//  Status polling
+// ──────────────────────────────────────────────
+let statusInterval = null;
+let btChart = null;
+
+async function fetchStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+
+    // Header
+    document.getElementById('user-badge').textContent = d.user_name || '';
+    const pill = document.getElementById('strategy-pill');
+    if (d.running) {
+      pill.textContent = '● Live';
+      pill.className   = 'status-pill pill-live';
+    } else {
+      pill.textContent = '● Idle';
+      pill.className   = 'status-pill pill-idle';
+    }
+
+    // PnL header
+    const pnl = d.pnl_today || 0;
+    const pnlEl = document.getElementById('pnl-header');
+    pnlEl.textContent = pnl !== 0 ? `P&L: ${pnl >= 0 ? '+' : ''}₹${pnl.toFixed(0)}` : '';
+    pnlEl.style.color = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+
+    // Metrics
+    document.getElementById('m-pnl').textContent = (pnl >= 0 ? '₹' : '-₹') + Math.abs(pnl).toLocaleString('en-IN');
+    document.getElementById('m-pnl').className   = 'metric-value ' + (pnl >= 0 ? 'green' : 'red');
+    document.getElementById('m-pnl-sub').textContent = (d.trades_today || []).length + ' trades completed';
+    document.getElementById('m-positions').textContent = Object.keys(d.positions || {}).length;
+    document.getElementById('m-status').textContent = d.running ? 'LIVE' : 'Idle';
+    document.getElementById('m-instruments').textContent = (d.instruments || []).join(', ') || 'none active';
+
+    // Funds — updated every status poll
+    const display = d.available_margin || 0;
+    const payin   = d.payin_amount     || 0;
+    const used    = d.used_margin      || 0;
+    document.getElementById('m-funds').textContent =
+      '₹' + display.toLocaleString('en-IN', {maximumFractionDigits: 0});
+    const subFunds = document.getElementById('m-funds-sub');
+    if (subFunds) subFunds.textContent = payin > 0 && display === payin
+      ? `Payin pending: ₹${payin.toFixed(2)}`
+      : used > 0
+        ? `Used: ₹${used.toLocaleString('en-IN', {maximumFractionDigits:0})}`
+        : 'Upstox margin';
+
+    // Signals feed
+    const signals = d.signals || [];
+    const feed = document.getElementById('signal-feed');
+    document.getElementById('signal-count').textContent = signals.length + ' signals';
+    if (signals.length === 0) {
+      feed.innerHTML = '<div class="empty">Signals will appear once strategy is running.</div>';
+    } else {
+      feed.innerHTML = signals.map(s => {
+        const action = s.action || 'WAIT';
+        const color  = action === 'BUY' ? 'var(--green)' : action === 'SELL' ? 'var(--red)' :
+                       action.startsWith('EXIT') ? 'var(--amber)' : 'var(--muted)';
+        return `<div class="signal-item">
+          <div class="signal-time">${s.timestamp || ''}</div>
+          <div class="signal-body">
+            <div class="signal-action" style="color:${color}">
+              [${s.instrument || ''}] ${action}
+              ${s.entry ? ' @ ₹' + s.entry : ''}
+              ${s.exit_price ? ' → ₹' + s.exit_price : ''}
+            </div>
+            <div class="signal-detail">
+              ${s.reason || (s.vwap ? 'VWAP: ' + s.vwap : '')}
+              ${s.pnl !== undefined ? ' | P&L: ₹' + s.pnl.toFixed(0) : ''}
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    // Trades table
+    renderTrades(d.trades_today || []);
+
+  } catch (e) { console.error('Status poll error:', e); }
+}
+
+function renderTrades(trades) {
+  const el = document.getElementById('trades-table');
+  if (!trades.length) {
+    el.innerHTML = '<div class="empty">No trades completed today yet.</div>';
+    return;
+  }
+  const rows = trades.map(t => {
+    const pnl = t.pnl || 0;
+    const res = pnl > 0 ? '<span class="badge badge-win">WIN</span>' : '<span class="badge badge-loss">LOSS</span>';
+    return `<tr>
+      <td>${t.instrument || ''}</td>
+      <td>${t.time || ''}</td>
+      <td><span class="badge ${t.action==='EXIT_SL'?'badge-sell':'badge-buy'}">${t.action||''}</span></td>
+      <td style="color:${pnl>=0?'var(--green)':'var(--red)'};font-weight:600;">
+        ${pnl>=0?'+':''}₹${pnl.toFixed(0)}</td>
+      <td>${res}</td>
+      <td class="text-muted">${t.reason||''}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `<table><thead><tr>
+    <th>Instrument</th><th>Time</th><th>Action</th><th>P&L</th><th>Result</th><th>Reason</th>
+  </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// ──────────────────────────────────────────────
+//  Positions (Upstox live)
+// ──────────────────────────────────────────────
+async function loadPositions() {
+  const el = document.getElementById('positions-table');
+  el.innerHTML = '<div class="loading">Loading positions...</div>';
+  try {
+    const r = await fetch('/api/positions');
+    const d = await r.json();
+    const pos = d.positions || [];
+    if (!pos.length) {
+      el.innerHTML = '<div class="empty">No open positions in your Upstox account.</div>';
+      return;
+    }
+    const rows = pos.map(p => {
+      const pnl = p.pnl || 0;
+      return `<tr>
+        <td>${p.tradingsymbol || ''}</td>
+        <td><span class="badge ${p.quantity>0?'badge-buy':'badge-sell'}">${p.quantity>0?'LONG':'SHORT'}</span></td>
+        <td>${Math.abs(p.quantity || 0)}</td>
+        <td>₹${(p.average_price || 0).toFixed(2)}</td>
+        <td>₹${(p.last_price || 0).toFixed(2)}</td>
+        <td style="color:${pnl>=0?'var(--green)':'var(--red)'};font-weight:600;">
+          ${pnl>=0?'+':''}₹${pnl.toFixed(0)}</td>
+      </tr>`;
+    }).join('');
+    el.innerHTML = `<table><thead><tr>
+      <th>Symbol</th><th>Side</th><th>Qty</th><th>Avg Price</th><th>LTP</th><th>P&L</th>
+    </tr></thead><tbody>${rows}</tbody></table>`;
+    document.getElementById('m-positions').textContent = pos.filter(p=>p.quantity!==0).length;
+  } catch (e) {
+    el.innerHTML = '<div class="empty text-muted">Could not load positions.</div>';
+  }
+}
+
+// ──────────────────────────────────────────────
+//  Funds
+// ──────────────────────────────────────────────
+async function loadFunds() {
+  try {
+    const r = await fetch('/api/funds');
+    const d = await r.json();
+    if (d.error) return;
+
+    const display = d.display_balance || d.available_margin || 0;
+    const payin   = d.payin_amount    || 0;
+    const used    = d.used_margin     || 0;
+
+    document.getElementById('m-funds').textContent =
+      '₹' + display.toLocaleString('en-IN', {maximumFractionDigits: 0});
+
+    const sub = document.getElementById('m-funds-sub');
+    if (sub) {
+      if (payin > 0 && d.available_margin === 0)
+        sub.textContent = `Payin pending: ₹${payin.toFixed(2)}`;
+      else if (used > 0)
+        sub.textContent = `Used: ₹${used.toLocaleString('en-IN', {maximumFractionDigits:0})}`;
+      else
+        sub.textContent = 'Upstox margin';
+    }
+  } catch(e) { console.error('loadFunds:', e); }
+}
+
+// ──────────────────────────────────────────────
+//  Strategy control
+// ──────────────────────────────────────────────
+async function startStrategy() {
+  const instruments = [...document.querySelectorAll('.instr-check:checked')].map(c => c.value);
+  if (!instruments.length) { showMsg('strategy-msg', 'Select at least one instrument.', 'error'); return; }
+
+  const body = {
+    instruments,
+    lots:       parseInt(document.getElementById('cfg-lots').value),
+    capital:    parseFloat(document.getElementById('cfg-capital').value),
+    risk_pct:   parseFloat(document.getElementById('cfg-risk').value),
+    or_minutes: parseInt(document.getElementById('cfg-or').value),
+  };
+
+  try {
+    const r = await fetch('/api/strategy/start', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if (d.error) { showMsg('strategy-msg', d.error, 'error'); return; }
+    showMsg('strategy-msg', `Strategy started for: ${instruments.join(', ')}`, 'success');
+  } catch(e) { showMsg('strategy-msg', 'Error: ' + e.message, 'error'); }
+}
+
+async function stopStrategy(instrument) {
+  try {
+    await fetch('/api/strategy/stop', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({instrument})
+    });
+    showMsg('strategy-msg', 'Strategy stopped.', 'info');
+  } catch(e) {}
+}
+
+// ──────────────────────────────────────────────
+//  Diagnostics (Settings tab)
+// ──────────────────────────────────────────────
+async function testConnection() {
+  const btn = document.getElementById('btn-test');
+  const el  = document.getElementById('test-result');
+  const instrument = document.getElementById('test-instrument').value;
+
+  btn.textContent = '⏳ Testing...';
+  btn.disabled    = true;
+  el.style.display = 'none';
+
+  try {
+    const r = await fetch('/api/debug/test-connection', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({instrument})
+    });
+    const d = await r.json();
+
+    if (d.error) {
+      el.className = 'error-box';
+      el.innerHTML = '<strong>Error:</strong> ' + d.error;
+      el.style.display = 'block';
+      return;
+    }
+
+    const ok = d.raw_candle_count > 0;
+    el.className = ok ? 'success-box' : 'error-box';
+    el.innerHTML = ok
+      ? `<strong>✅ Connection OK!</strong><br>
+         Instrument: ${d.instrument_label}<br>
+         Raw 1-min candles fetched: <strong>${d.raw_candle_count}</strong><br>
+         First candle: ${d.first_candle ? d.first_candle.time + ' | Close: ₹' + d.first_candle.close : '—'}<br>
+         Last candle: ${d.last_candle ? d.last_candle.time + ' | Close: ₹' + d.last_candle.close : '—'}<br>
+         <br>✅ Backtest should work. If it still fails, widen your date range.`
+      : `<strong>❌ No data returned!</strong><br>
+         HTTP Status: ${d.http_status}<br>
+         Upstox Status: ${d.upstox_status || '—'}<br>
+         Errors: ${JSON.stringify(d.upstox_errors)}<br>
+         URL tested: <code style="font-size:11px;">${d.url_tested}</code><br><br>
+         Fixes:<br>
+         1. Logout and Login again (token may have expired)<br>
+         2. Check your Upstox subscription includes API access<br>
+         3. Verify redirect URI = http://localhost:8080/callback`;
+    el.style.display = 'block';
+  } catch(e) {
+    el.className = 'error-box';
+    el.innerHTML = 'Request failed: ' + e.message;
+    el.style.display = 'block';
+  } finally {
+    btn.textContent = '▶ Test Connection';
+    btn.disabled    = false;
+  }
+}
+
+async function sampleCandles() {
+  const btn = document.getElementById('btn-sample');
+  const el  = document.getElementById('test-result');
+  const instrument = document.getElementById('test-instrument').value;
+
+  btn.textContent = '⏳ Fetching...';
+  btn.disabled    = true;
+
+  try {
+    const r = await fetch('/api/debug/sample-candles', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({instrument})
+    });
+    const d = await r.json();
+
+    if (d.error) {
+      el.className = 'error-box';
+      el.innerHTML = d.error;
+      el.style.display = 'block';
+      return;
+    }
+
+    const rows = (d.sample || []).map(c =>
+      `<tr><td>${c.time}</td><td>₹${c.open.toFixed(2)}</td><td>₹${c.high.toFixed(2)}</td>
+       <td>₹${c.low.toFixed(2)}</td><td>₹${c.close.toFixed(2)}</td>
+       <td>${(c.volume/1000).toFixed(0)}K</td></tr>`
+    ).join('');
+
+    el.className = 'info-box';
+    el.style.display = 'block';
+    el.innerHTML = `
+      <strong>📊 ${d.instrument} — ${d.total_candles} five-min candles (${d.date_range})</strong>
+      <div style="overflow-x:auto;margin-top:10px;">
+      <table style="width:100%;font-size:12px;border-collapse:collapse;">
+        <thead><tr style="color:#8892a4;">
+          <th style="padding:4px 8px;text-align:left;">Time</th>
+          <th style="padding:4px 8px;">Open</th><th style="padding:4px 8px;">High</th>
+          <th style="padding:4px 8px;">Low</th><th style="padding:4px 8px;">Close</th>
+          <th style="padding:4px 8px;">Volume</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>`;
+  } catch(e) {
+    el.className = 'error-box';
+    el.innerHTML = e.message;
+    el.style.display = 'block';
+  } finally {
+    btn.textContent = '📊 Preview 5-min Candles';
+    btn.disabled    = false;
+  }
+}
+
+// ──────────────────────────────────────────────
+//  Backtest
+// ──────────────────────────────────────────────
+async function runBacktest() {
+  const btn = document.getElementById('btn-bt');
+  const msg = document.getElementById('bt-msg');
+  const results = document.getElementById('bt-results');
+
+  const body = {
+    instrument: document.getElementById('bt-instrument').value,
+    from_date:  document.getElementById('bt-from').value,
+    to_date:    document.getElementById('bt-to').value,
+    lots:       parseInt(document.getElementById('bt-lots').value),
+    capital:    parseFloat(document.getElementById('bt-capital').value),
+    or_minutes: parseInt(document.getElementById('bt-or').value),
+    t1_ratio:   parseFloat(document.getElementById('bt-t1').value),
+    t2_ratio:   parseFloat(document.getElementById('bt-t2').value),
+  };
+
+  if (!body.from_date || !body.to_date) {
+    showMsgEl(msg, 'Please select from and to dates.', 'error'); return;
+  }
+
+  btn.textContent = '⏳ Fetching 1-min candles & resampling to 5-min...';
+  btn.disabled    = true;
+  results.style.display = 'none';
+  msg.style.display = 'none';
+
+  try {
+    const r = await fetch('/api/backtest', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    const d = await r.json();
+
+    if (d.error) { showMsgEl(msg, d.error, 'error'); return; }
+
+    // Summary
+    const s = d.summary;
+    const sumEl = document.getElementById('bt-summary');
+    const pnlCol = s.total_pnl >= 0 ? 'var(--green)' : 'var(--red)';
+    const optPct  = s.opt_pct || 0;
+    const optBadge = (() => {
+      const r = s.real_trades || 0;
+      const b = s.bsm_trades  || 0;
+      const n = s.total_trades_n || s.total_trades || 0;
+      if (r === n) return `<span style="color:var(--green)">✅ All ${n} trades used real Upstox option data</span>`;
+      if (r  >  0) return `<span style="color:var(--amber)">✅ ${r} Real + 📊 ${b} BSM-calculated — all trades show option premiums</span>`;
+      return `<span style="color:var(--blue)">📊 ${b}/${n} trades priced via Black-Scholes-Merton (IV=${(s.iv_used||20)}%) — all show option P&amp;L</span>`;
+    })();
+    sumEl.innerHTML = `
+      <div class="stat-card" style="grid-column:span 2">
+        <div class="stat-label">Options Data Coverage</div>
+        <div style="font-size:13px;margin-top:4px;">${optBadge}</div>
+      </div>
+      <div class="stat-card"><div class="stat-label">Total Option P&L</div>
+        <div class="stat-val" style="color:${pnlCol}">${s.total_pnl>=0?'+':''}₹${s.total_pnl.toLocaleString('en-IN',{maximumFractionDigits:0})}</div></div>
+      <div class="stat-card"><div class="stat-label">Return %</div>
+        <div class="stat-val" style="color:${pnlCol}">${s.return_pct}%</div></div>
+      <div class="stat-card"><div class="stat-label">Win Rate</div>
+        <div class="stat-val" style="color:var(--blue)">${s.win_rate}%</div></div>
+      <div class="stat-card"><div class="stat-label">Total Trades</div>
+        <div class="stat-val">${s.total_trades}</div></div>
+      <div class="stat-card"><div class="stat-label">Wins / Losses</div>
+        <div class="stat-val"><span style="color:var(--green)">${s.wins}</span> / <span style="color:var(--red)">${s.losses}</span></div></div>
+      <div class="stat-card"><div class="stat-label">Profit Factor</div>
+        <div class="stat-val" style="color:var(--amber)">${s.profit_factor}</div></div>
+      <div class="stat-card"><div class="stat-label">Max Drawdown</div>
+        <div class="stat-val" style="color:var(--red)">₹${s.max_drawdown.toLocaleString('en-IN',{maximumFractionDigits:0})}</div></div>
+      <div class="stat-card"><div class="stat-label">Sharpe Ratio</div>
+        <div class="stat-val" style="color:var(--purple)">${s.sharpe_ratio}</div></div>
+      <div class="stat-card"><div class="stat-label">Avg Win (Option)</div>
+        <div class="stat-val" style="color:var(--green)">₹${s.avg_win.toLocaleString('en-IN',{maximumFractionDigits:0})}</div></div>
+      <div class="stat-card"><div class="stat-label">Avg Loss (Option)</div>
+        <div class="stat-val" style="color:var(--red)">₹${s.avg_loss.toLocaleString('en-IN',{maximumFractionDigits:0})}</div></div>
+      <div class="stat-card"><div class="stat-label">Expectancy</div>
+        <div class="stat-val">₹${s.expectancy.toLocaleString('en-IN',{maximumFractionDigits:0})}</div></div>
+      <div class="stat-card"><div class="stat-label">Days Traded</div>
+        <div class="stat-val">${s.days_traded} / ${s.total_days}</div></div>
+    `;
+
+    // Equity chart
+    const ec  = d.equity_curve || [];
+    const ctx = document.getElementById('bt-chart').getContext('2d');
+    if (btChart) btChart.destroy();
+    btChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels:   ec.map(e => e.date),
+        datasets: [{
+          label:           'Cumulative Option P&L (₹)',
+          data:            ec.map(e => e.cumulative_pnl),
+          borderColor:     s.total_pnl >= 0 ? '#22c55e' : '#ef4444',
+          backgroundColor: s.total_pnl >= 0 ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
+          borderWidth: 2, fill: true, tension: 0.3,
+          pointRadius: ec.length > 60 ? 0 : 3,
+          pointBackgroundColor: '#22c55e'
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: '#8892a4', font: { size: 12 } } } },
+        scales: {
+          x: { ticks: { color: '#555e75', maxTicksLimit: 10 }, grid: { color: '#1a1e2a' } },
+          y: {
+            ticks: { color: '#8892a4',
+                     callback: v => '₹' + (v/1000).toFixed(0) + 'K' },
+            grid: { color: '#1a1e2a' }
+          }
+        }
+      }
+    });
+
+    // Trade table — option-based
+    const trades = d.trades || [];
+    document.getElementById('bt-trade-count').textContent = trades.length + ' trades';
+    const tbody = document.getElementById('bt-trade-body');
+    tbody.innerHTML = trades.map(t => {
+      const pnl    = t.opt_pnl !== null && t.opt_pnl !== undefined ? t.opt_pnl : (t.pnl || 0);
+      const pnlColor = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+      const res = t.result === 'WIN'
+        ? '<span class="badge badge-win">WIN</span>'
+        : '<span class="badge badge-loss">LOSS</span>';
+      const dir = t.direction === 'LONG'
+        ? '<span class="badge badge-buy">▲ LONG CE</span>'
+        : '<span class="badge badge-sell">▼ SHORT PE</span>';
+      const src = t.data_source === 'Real'
+        ? '<span style="color:var(--green);font-size:10px;font-weight:600">✅ Real</span>'
+        : '<span style="color:var(--blue);font-size:10px;font-weight:600">📊 BSM</span>';
+      return `<tr>
+        <td>${t.date}</td>
+        <td>${dir}</td>
+        <td style="font-family:monospace;font-size:11px;color:var(--blue)">
+          ${t.option_symbol || '—'}&nbsp;${src}</td>
+        <td style="font-weight:500">₹${(t.strike||0).toLocaleString('en-IN')}</td>
+        <td style="font-size:12px;color:var(--amber)">${t.expiry || '—'}</td>
+        <td>${t.entry_time||''}</td>
+        <td class="text-muted">₹${(t.entry_price||0).toFixed(1)}</td>
+        <td style="color:var(--teal);font-weight:500">${t.opt_entry_price != null ? '₹'+t.opt_entry_price.toFixed(2) : '—'}</td>
+        <td>${t.exit_time||'—'}</td>
+        <td class="text-muted">${t.exit_price ? '₹'+(t.exit_price||0).toFixed(1) : '—'}</td>
+        <td style="color:var(--teal);font-weight:500">${t.opt_exit_price != null ? '₹'+t.opt_exit_price.toFixed(2) : '—'}</td>
+        <td class="text-muted" style="font-size:11px;">${(t.exit_reason||'—').replace('Stop loss triggered','SL').replace('Target','T').replace('Time exit 3:15 PM','3:15 PM')}</td>
+        <td style="font-size:12px;font-weight:600;color:${vixColor(t.india_vix)}">
+          ${t.india_vix != null ? t.india_vix.toFixed(1) : '—'}
+          <div style="font-size:10px;color:var(--dim)">${t.vix_regime||''}</div></td>
+        <td style="font-weight:700;color:${pnlColor}">
+          ${pnl>=0?'+':''}₹${Math.abs(pnl).toLocaleString('en-IN',{maximumFractionDigits:0})}</td>
+        <td>${res}</td>
+      </tr>`;
+    }).join('');
+
+    // VIX analysis section
+    const va = d.vix_analysis || [];
+    let vixHtml = '';
+    if (va.length > 0) {
+      const vixRows = va.map(v => {
+        const pc = v.total_pnl >= 0 ? 'var(--green)' : 'var(--red)';
+        const wc = v.win_rate >= 55 ? 'var(--green)' : v.win_rate >= 45 ? 'var(--amber)' : 'var(--red)';
+        const rec = v.win_rate >= 55
+          ? '<span style="color:var(--green);font-size:11px;">✅ Good to trade</span>'
+          : v.win_rate >= 45
+            ? '<span style="color:var(--amber);font-size:11px;">⚠ Trade carefully</span>'
+            : '<span style="color:var(--red);font-size:11px;">❌ Consider skipping</span>';
+        return `<tr>
+          <td style="font-weight:600;color:${vixColor(v.avg_vix)}">${v.regime}</td>
+          <td style="color:var(--muted)">${v.avg_vix != null ? v.avg_vix.toFixed(1) : '—'}</td>
+          <td>${v.trades}</td>
+          <td style="color:var(--green)">${v.wins}</td>
+          <td style="color:var(--red)">${v.losses}</td>
+          <td style="font-weight:600;color:${wc}">${v.win_rate}%</td>
+          <td style="font-weight:600;color:${pc}">
+            ${v.total_pnl>=0?'+':''}₹${Math.abs(v.total_pnl).toLocaleString('en-IN',{maximumFractionDigits:0})}</td>
+          <td>${rec}</td>
+        </tr>`;
+      }).join('');
+      vixHtml = `
+        <div class="card">
+          <div class="card-title">🔥 India VIX Impact Analysis</div>
+          <p class="text-muted text-sm" style="margin-bottom:14px;">
+            How your P&amp;L and win rate change across different VIX regimes.
+            High VIX = expensive premiums, choppy markets → more losses.
+          </p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>VIX Regime</th><th>Avg VIX</th><th>Trades</th>
+                <th>Wins</th><th>Losses</th><th>Win Rate</th>
+                <th>Total P&amp;L</th><th>Recommendation</th>
+              </tr></thead>
+              <tbody>${vixRows}</tbody>
+            </table>
+          </div>
+        </div>`;
+    }
+
+    results.style.display = 'block';
+    // Insert VIX section after equity curve card
+    const existingVix = document.getElementById('vix-analysis-section');
+    if (existingVix) existingVix.remove();
+    if (vixHtml) {
+      const tradeCard = document.querySelector('#bt-trade-table').closest('.card');
+      tradeCard.insertAdjacentHTML('beforebegin',
+        `<div id="vix-analysis-section">${vixHtml}</div>`);
+    }
+
+  } catch(e) {
+    showMsgEl(msg, 'Backtest error: ' + e.message, 'error');
+  } finally {
+    btn.textContent = '▶ Run Backtest';
+    btn.disabled = false;
+  }
+}
+
+// ──────────────────────────────────────────────
+//  Instruments page
+// ──────────────────────────────────────────────
+function renderInstruments() {
+  const instrs = {
+    NIFTY:      { label:'Nifty 50',type:'index',lot_size:75,suitable:5,
+                  desc:'Best for ORB. Weekly Tuesday expiry. Highest liquidity in Indian F&O. Tight bid-ask. 75 shares/lot.' },
+    BANKNIFTY:  { label:'Bank Nifty',type:'index',lot_size:30,suitable:5,
+                  desc:'Volatile banking index. Monthly last Tuesday expiry. 30 shares/lot. Huge intraday swings.' },
+    HDFCBANK:   { label:'HDFC Bank',type:'stock',lot_size:550,suitable:5,
+                  desc:'Highest liquidity banking stock. Excellent VWAP behavior. Strong ORB follow-through.' },
+    ICICIBANK:  { label:'ICICI Bank',type:'stock',lot_size:700,suitable:5,
+                  desc:'High beta bank. Sharp directional moves. VWAP serves as magnet on trending days.' },
+    KOTAKBANK:  { label:'Kotak Bank',type:'stock',lot_size:400,suitable:4,
+                  desc:'Premium private bank. Institutional buying/selling very visible in price action.' },
+    AXISBANK:   { label:'Axis Bank',type:'stock',lot_size:1200,suitable:4,
+                  desc:'High volume banking stock. Good intraday range. ORB breakouts often clean.' },
+    SBIN:       { label:'SBI',type:'stock',lot_size:1500,suitable:4,
+                  desc:'PSU giant. Big gap-ups/downs on macro news. High daily turnover.' },
+    RELIANCE:   { label:'Reliance',type:'stock',lot_size:250,suitable:4,
+                  desc:'Energy & telecom conglomerate. Strong trend days. VWAP respects well.' },
+    BAJFINANCE: { label:'Bajaj Finance',type:'stock',lot_size:125,suitable:4,
+                  desc:'NBFC heavyweight. Sharp moves on rate/credit data. VWAP pullbacks clean.' },
+    LT:         { label:'L&T',type:'stock',lot_size:150,suitable:4,
+                  desc:'Infra leader. Strong on capex/order news. Good trending instrument.' },
+    TCS:        { label:'TCS',type:'stock',lot_size:150,suitable:3,
+                  desc:'IT blue-chip. Lower ADR. Good ORB on result days & earnings season.' },
+    INFY:       { label:'Infosys',type:'stock',lot_size:300,suitable:3,
+                  desc:'IT sector. Predictable VWAP on normal days. Good for conservative strategy.' },
+  };
+
+  const stars = n => Array(5).fill(0).map((_,i) =>
+    `<span style="color:${i<n?'var(--amber)':'var(--border2)'}"">★</span>`).join('');
+
+  const card = (k, v) => `
+    <div class="stock-card">
+      <div class="stock-header">
+        <div>
+          <div class="stock-name" style="color:${v.type==='index'?'var(--blue)':'var(--text)'}">${v.label}</div>
+          <div class="stock-key text-muted">${k} &nbsp;|&nbsp; ${v.type==='index'?'Options':'Equity'}</div>
+        </div>
+        <div style="font-size:14px;">${stars(v.suitable)}</div>
+      </div>
+      <div class="stock-desc">${v.desc}</div>
+      <div class="stock-meta">
+        <span class="stock-tag">Lot: ${v.lot_size}</span>
+        <span class="stock-tag">Suitability: ${v.suitable}/5</span>
+      </div>
+    </div>`;
+
+  const indices = Object.entries(instrs).filter(([,v])=>v.type==='index');
+  const stocks  = Object.entries(instrs).filter(([,v])=>v.type==='stock');
+
+  document.getElementById('indices-grid').innerHTML = indices.map(([k,v])=>card(k,v)).join('');
+  document.getElementById('stocks-grid').innerHTML  = stocks.map(([k,v])=>card(k,v)).join('');
+}
+
+// ──────────────────────────────────────────────
+//  Helpers
+// ──────────────────────────────────────────────
+function vixColor(vix) {
+  if (vix == null) return 'var(--dim)';
+  if (vix < 13)   return 'var(--teal)';
+  if (vix < 16)   return 'var(--green)';
+  if (vix < 20)   return 'var(--amber)';
+  return 'var(--red)';
+}
+
+function showMsg(id, text, type) {
+  showMsgEl(document.getElementById(id), text, type);
+}
+function showMsgEl(el, text, type) {
+  const cls = type === 'error' ? 'error-box' : type === 'success' ? 'success-box' : 'info-box';
+  el.className = cls; el.textContent = text; el.style.display = 'block';
+  setTimeout(() => { el.style.display = 'none'; }, 5000);
+}
+
+// ──────────────────────────────────────────────
+//  Monthly Analysis
+// ──────────────────────────────────────────────
+let moChart = null;
+
+async function runMonthly() {
+  const btn  = document.getElementById('btn-mo');
+  const msg  = document.getElementById('mo-msg');
+  const res  = document.getElementById('mo-results');
+
+  const body = {
+    instrument: document.getElementById('mo-instrument').value,
+    from_date:  document.getElementById('mo-from').value,
+    to_date:    document.getElementById('mo-to').value,
+    lots:       parseInt(document.getElementById('mo-lots').value),
+    capital:    parseFloat(document.getElementById('mo-capital').value),
+    or_minutes: parseInt(document.getElementById('mo-or').value),
+  };
+
+  if (!body.from_date || !body.to_date) {
+    showMsgEl(msg, 'Please select from and to dates.', 'error'); return;
+  }
+
+  btn.textContent = '⏳ Running analysis…';
+  btn.disabled    = true;
+  res.style.display = 'none';
+  msg.style.display = 'none';
+
+  try {
+    const r = await fetch('/api/backtest/monthly', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+
+    if (d.error) { showMsgEl(msg, d.error, 'error'); return; }
+
+    const monthly = d.monthly || [];
+    const overall = d.overall || {};
+    const cap     = body.capital;
+
+    // ── Overall summary ──
+    const pnlCol = overall.total_pnl >= 0 ? 'var(--green)' : 'var(--red)';
+    document.getElementById('mo-overall').innerHTML = `
+      <div class="stat-card"><div class="stat-label">Total P&L</div>
+        <div class="stat-val" style="color:${pnlCol}">${overall.total_pnl>=0?'+':''}₹${(overall.total_pnl||0).toLocaleString('en-IN',{maximumFractionDigits:0})}</div></div>
+      <div class="stat-card"><div class="stat-label">Return %</div>
+        <div class="stat-val" style="color:${pnlCol}">${overall.return_pct||0}%</div></div>
+      <div class="stat-card"><div class="stat-label">Win Rate</div>
+        <div class="stat-val" style="color:var(--blue)">${overall.win_rate||0}%</div></div>
+      <div class="stat-card"><div class="stat-label">Total Trades</div>
+        <div class="stat-val">${overall.total_trades||0}</div></div>
+      <div class="stat-card"><div class="stat-label">Profit Months</div>
+        <div class="stat-val" style="color:var(--green)">${monthly.filter(m=>m.result==='PROFIT').length}</div></div>
+      <div class="stat-card"><div class="stat-label">Loss Months</div>
+        <div class="stat-val" style="color:var(--red)">${monthly.filter(m=>m.result==='LOSS').length}</div></div>
+      <div class="stat-card"><div class="stat-label">Profit Factor</div>
+        <div class="stat-val" style="color:var(--amber)">${overall.profit_factor||0}</div></div>
+      <div class="stat-card"><div class="stat-label">Max Drawdown</div>
+        <div class="stat-val" style="color:var(--red)">₹${(overall.max_drawdown||0).toLocaleString('en-IN',{maximumFractionDigits:0})}</div></div>
+    `;
+
+    // ── Bar chart ──
+    const labels = monthly.map(m => m.month);
+    const values = monthly.map(m => m.total_pnl);
+    const colors = values.map(v => v >= 0 ? 'rgba(34,197,94,0.8)' : 'rgba(239,68,68,0.8)');
+    const borders= values.map(v => v >= 0 ? '#22c55e' : '#ef4444');
+
+    const ctx = document.getElementById('mo-chart').getContext('2d');
+    if (moChart) moChart.destroy();
+    moChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Monthly Option P&L (₹)',
+          data:  values,
+          backgroundColor: colors,
+          borderColor:     borders,
+          borderWidth: 1,
+          borderRadius: 4,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: '#8892a4', font: { size: 12 } } },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const v = ctx.raw;
+                return ` ₹${Math.abs(v).toLocaleString('en-IN',{maximumFractionDigits:0})} ${v>=0?'profit':'loss'}`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { color: '#8892a4' }, grid: { color: '#1a1e2a' } },
+          y: {
+            ticks: {
+              color: '#8892a4',
+              callback: v => (v >= 0 ? '+' : '') + '₹' + (v/1000).toFixed(0) + 'K'
+            },
+            grid: { color: '#1a1e2a' }
+          }
+        }
+      }
+    });
+
+    // ── Monthly table ──
+    document.getElementById('mo-month-count').textContent = monthly.length + ' months';
+
+    const tbody = document.getElementById('mo-table-body');
+    tbody.innerHTML = monthly.map(m => {
+      const pnlColor = m.total_pnl >= 0 ? 'var(--green)' : 'var(--red)';
+      const badge    = m.result === 'PROFIT'
+        ? '<span class="badge badge-win">PROFIT</span>'
+        : '<span class="badge badge-loss">LOSS</span>';
+      const wrColor  = m.win_rate >= 55 ? 'var(--green)' : m.win_rate >= 45 ? 'var(--amber)' : 'var(--red)';
+      return `<tr>
+        <td style="font-weight:600">${m.month}</td>
+        <td>${m.total_trades}</td>
+        <td style="color:var(--green)">${m.long_trades}</td>
+        <td style="color:var(--red)">${m.short_trades}</td>
+        <td style="color:${wrColor};font-weight:600">${m.win_rate}%</td>
+        <td style="color:var(--green)">+₹${(m.best_trade||0).toLocaleString('en-IN',{maximumFractionDigits:0})}</td>
+        <td style="color:var(--red)">₹${(m.worst_trade||0).toLocaleString('en-IN',{maximumFractionDigits:0})}</td>
+        <td style="font-weight:700;color:${pnlColor}">
+          ${m.total_pnl>=0?'+':''}₹${Math.abs(m.total_pnl).toLocaleString('en-IN',{maximumFractionDigits:0})}</td>
+        <td style="color:${pnlColor}">${m.return_pct>=0?'+':''}${m.return_pct}%</td>
+        <td>${badge}</td>
+      </tr>`;
+    }).join('');
+
+    // Totals footer
+    const totalPnl = monthly.reduce((s, m) => s + m.total_pnl, 0);
+    const totalTrades = monthly.reduce((s, m) => s + m.total_trades, 0);
+    const totColor = totalPnl >= 0 ? 'var(--green)' : 'var(--red)';
+    document.getElementById('mo-table-foot').innerHTML = `
+      <tr style="border-top:2px solid var(--border2);font-weight:600;">
+        <td>TOTAL (${monthly.length} months)</td>
+        <td>${totalTrades}</td>
+        <td style="color:var(--green)">${monthly.reduce((s,m)=>s+m.long_trades,0)}</td>
+        <td style="color:var(--red)">${monthly.reduce((s,m)=>s+m.short_trades,0)}</td>
+        <td style="color:var(--blue)">${overall.win_rate}%</td>
+        <td>—</td><td>—</td>
+        <td style="color:${totColor}">${totalPnl>=0?'+':''}₹${Math.abs(totalPnl).toLocaleString('en-IN',{maximumFractionDigits:0})}</td>
+        <td style="color:${totColor}">${overall.return_pct>=0?'+':''}${overall.return_pct}%</td>
+        <td><span class="badge ${totalPnl>=0?'badge-win':'badge-loss'}">${totalPnl>=0?'PROFIT':'LOSS'}</span></td>
+      </tr>`;
+
+    res.style.display = 'block';
+
+  } catch(e) {
+    showMsgEl(msg, 'Error: ' + e.message, 'error');
+  } finally {
+    btn.textContent = '📅 Run Monthly Analysis';
+    btn.disabled    = false;
+  }
+}
+
+// ──────────────────────────────────────────────
+//  Init
+// ──────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  // Set default date range (last 90 days)
+  const today  = new Date();
+  const from90 = new Date(); from90.setDate(today.getDate() - 90);
+  const fmt    = d => d.toISOString().split('T')[0];
+  document.getElementById('bt-from').value = fmt(from90);
+  document.getElementById('bt-to').value   = fmt(today);
+
+  // Monthly tab: default to last 6 months
+  const from6m = new Date(); from6m.setMonth(today.getMonth() - 6);
+  document.getElementById('mo-from').value = fmt(from6m);
+  document.getElementById('mo-to').value   = fmt(today);
+
+  // Start status polling
+  fetchStatus();
+  loadFunds();
+  loadPositions();
+  statusInterval = setInterval(fetchStatus, 15000);
+});
+</script>
+</body>
+</html>
